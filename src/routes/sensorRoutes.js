@@ -1,0 +1,92 @@
+import { Router } from "express";
+import crypto from "crypto";
+import { z } from "zod";
+import { pool } from "../db.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
+
+const router = Router();
+
+// Validación
+const createSensorSchema = z.object({
+  device_id: z.string().min(3),
+  name: z.string().min(2),
+  location: z.string().max(160).optional().nullable(),
+});
+
+// Crear sensor (usuario logueado)
+router.post("/", requireAuth, async (req, res) => {
+  try {
+    const { device_id, name, location } = createSensorSchema.parse(req.body);
+    const userId = req.user.id;
+
+    // api_key aleatoria segura
+    const api_key = crypto.randomBytes(24).toString("hex");
+
+    const result = await pool.query(
+      `INSERT INTO sensors (user_id, device_id, name, location, api_key)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, user_id, device_id, name, location, is_active, created_at, api_key`,
+      [userId, device_id, name, location ?? null, api_key]
+    );
+
+    return res.status(201).json({ sensor: result.rows[0] });
+  } catch (e) {
+    // device_id UNIQUE -> error 23505
+    if (e?.code === "23505") {
+      return res.status(409).json({ message: "Ese device_id ya está registrado" });
+    }
+    return res.status(400).json({ message: e.message ?? "Error creando sensor" });
+  }
+});
+
+// Listar sensores del usuario
+router.get("/", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query(
+      `SELECT id, user_id, device_id, name, location, is_active, created_at
+       FROM sensors
+       WHERE user_id = $1
+       ORDER BY id DESC`,
+      [userId]
+    );
+
+    return res.json({ sensors: result.rows });
+  } catch (e) {
+    return res.status(500).json({ message: "Error listando sensores" });
+  }
+});
+
+// Lecturas de un sensor (del usuario)
+router.get("/:id/readings", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const sensorId = Number(req.params.id);
+    const limit = Math.min(Number(req.query.limit ?? 50), 500);
+
+    // Verificar que el sensor pertenezca al usuario
+    const sensorCheck = await pool.query(
+      `SELECT id FROM sensors WHERE id=$1 AND user_id=$2`,
+      [sensorId, userId]
+    );
+    if (sensorCheck.rowCount === 0) {
+      return res.status(404).json({ message: "Sensor no encontrado" });
+    }
+
+    const readings = await pool.query(
+      `SELECT id, sensor_id, temperature_c, humidity_pct, created_at
+       FROM sensor_readings
+       WHERE sensor_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [sensorId, limit]
+    );
+
+    return res.json({ readings: readings.rows });
+  } catch (e) {
+    return res.status(500).json({ message: "Error consultando lecturas" });
+  }
+});
+
+export default router;

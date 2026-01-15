@@ -1,10 +1,14 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import sensorRoutes from "./routes/sensorRoutes.js";
+import ingestRoutes from "./routes/ingestRoutes.js";
+
 import { errorHandler } from "./middleware/error.middleware.js";
 import { testDb } from "./db.js";
 
@@ -22,8 +26,15 @@ app.get("/health", async (req, res, next) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("AgroSense Backend OK. Usa /health");
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/sensors", sensorRoutes);
+app.use("/api/ingest", ingestRoutes);
+
 
 app.use(errorHandler);
 
