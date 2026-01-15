@@ -12,6 +12,10 @@ const createSensorSchema = z.object({
   name: z.string().min(2),
   location: z.string().max(160).optional().nullable(),
 });
+//prueba Temporal
+router.get("/", (req, res) => {
+  res.json({ ok: true });
+});
 
 // Crear sensor (usuario logueado)
 router.post("/", requireAuth, async (req, res) => {
