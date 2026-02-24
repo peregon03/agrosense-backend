@@ -5,7 +5,7 @@ import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
-//
+
 // Validación
 const createSensorSchema = z.object({
   device_id: z.string().min(3),
@@ -58,7 +58,7 @@ router.get("/", requireAuth, async (req, res) => {
     return res.status(500).json({ message: "Error listando sensores" });
   }
 });
-
+//mas pruebas
 // Lecturas de un sensor (del usuario)
 router.get("/:id/readings", requireAuth, async (req, res) => {
   try {
