@@ -5,7 +5,7 @@ import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
-
+//
 // Validación
 const createSensorSchema = z.object({
   device_id: z.string().min(3),
