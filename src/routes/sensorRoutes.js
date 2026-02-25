@@ -6,21 +6,17 @@ import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// Validación
 const createSensorSchema = z.object({
   device_id: z.string().min(3),
   name: z.string().min(2),
   location: z.string().max(160).optional().nullable(),
 });
 
-
-// Crear sensor (usuario logueado)
+// Crear sensor
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { device_id, name, location } = createSensorSchema.parse(req.body);
     const userId = req.user.id;
-
-    // api_key aleatoria segura
     const api_key = crypto.randomBytes(24).toString("hex");
 
     const result = await pool.query(
@@ -32,7 +28,6 @@ router.post("/", requireAuth, async (req, res) => {
 
     return res.status(201).json({ sensor: result.rows[0] });
   } catch (e) {
-    // device_id UNIQUE -> error 23505
     if (e?.code === "23505") {
       return res.status(409).json({ message: "Ese device_id ya está registrado" });
     }
@@ -44,7 +39,6 @@ router.post("/", requireAuth, async (req, res) => {
 router.get("/", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-
     const result = await pool.query(
       `SELECT id, user_id, device_id, name, location, is_active, created_at
        FROM sensors
@@ -52,21 +46,40 @@ router.get("/", requireAuth, async (req, res) => {
        ORDER BY id DESC`,
       [userId]
     );
-
     return res.json({ sensors: result.rows });
   } catch (e) {
     return res.status(500).json({ message: "Error listando sensores" });
   }
 });
-//mas pruebas
-// Lecturas de un sensor (del usuario)
+
+// Eliminar sensor
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const sensorId = Number(req.params.id);
+
+    const result = await pool.query(
+      `DELETE FROM sensors WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [sensorId, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Sensor no encontrado" });
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ message: "Error eliminando sensor" });
+  }
+});
+
+// Lecturas de un sensor
 router.get("/:id/readings", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const sensorId = Number(req.params.id);
     const limit = Math.min(Number(req.query.limit ?? 50), 500);
 
-    // Verificar que el sensor pertenezca al usuario
     const sensorCheck = await pool.query(
       `SELECT id FROM sensors WHERE id=$1 AND user_id=$2`,
       [sensorId, userId]
@@ -76,7 +89,7 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
     }
 
     const readings = await pool.query(
-      `SELECT id, sensor_id, temperature_c, humidity_pct, created_at
+      `SELECT id, sensor_id, temperature, air_humidity, soil_humidity, created_at
        FROM sensor_readings
        WHERE sensor_id = $1
        ORDER BY created_at DESC
