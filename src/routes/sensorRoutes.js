@@ -73,12 +73,20 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// Lecturas de un sensor
+// Lecturas de un sensor por rango de fecha
 router.get("/:id/readings", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const sensorId = Number(req.params.id);
-    const limit = Math.min(Number(req.query.limit ?? 50), 500);
+
+    const intervalMap = {
+      today:   "24 hours",
+      week:    "7 days",
+      month:   "30 days",
+      quarter: "90 days",
+    };
+    const range = Object.hasOwn(intervalMap, req.query.range ?? "") ? req.query.range : "today";
+    const interval = intervalMap[range];
 
     const sensorCheck = await pool.query(
       `SELECT id FROM sensors WHERE id=$1 AND user_id=$2`,
@@ -92,12 +100,16 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
       `SELECT id, sensor_id, temperature, air_humidity, soil_humidity, created_at
        FROM sensor_readings
        WHERE sensor_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [sensorId, limit]
+         AND created_at >= NOW() - INTERVAL '${interval}'
+       ORDER BY created_at ASC`,
+      [sensorId]
     );
 
-    return res.json({ readings: readings.rows });
+    return res.json({
+      readings: readings.rows,
+      range,
+      count: readings.rowCount,
+    });
   } catch (e) {
     return res.status(500).json({ message: "Error consultando lecturas" });
   }
