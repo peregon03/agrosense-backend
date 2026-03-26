@@ -17,7 +17,8 @@ export async function register(req, res) {
     return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
   }
 
-  const { first_name, last_name, email, password } = parsed.data;
+  const { first_name, last_name, password } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
 
   // Verificar si ya existe
   const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
@@ -46,7 +47,8 @@ export async function login(req, res) {
     return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
   }
 
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
 
   const result = await pool.query(
     "SELECT id, first_name, last_name, email, password_hash FROM users WHERE email = $1",
