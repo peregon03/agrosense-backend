@@ -35,12 +35,13 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// Listar sensores del usuario
+// Listar sensores del usuario (incluye umbrales de alerta)
 router.get("/", requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await pool.query(
-      `SELECT id, user_id, device_id, name, location, is_active, created_at
+      `SELECT id, user_id, device_id, name, location, is_active, created_at, api_key,
+              temp_min, temp_max, air_hum_min, air_hum_max, soil_hum_min, soil_hum_max
        FROM sensors
        WHERE user_id = $1
        ORDER BY id DESC`,
@@ -70,6 +71,44 @@ router.delete("/:id", requireAuth, async (req, res) => {
     return res.status(200).json({ ok: true });
   } catch (e) {
     return res.status(500).json({ message: "Error eliminando sensor" });
+  }
+});
+
+// Actualizar umbrales de alerta
+router.put("/:id/thresholds", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const sensorId = Number(req.params.id);
+
+    const thresholdSchema = z.object({
+      temp_min:     z.number().nullable().optional(),
+      temp_max:     z.number().nullable().optional(),
+      air_hum_min:  z.number().nullable().optional(),
+      air_hum_max:  z.number().nullable().optional(),
+      soil_hum_min: z.number().nullable().optional(),
+      soil_hum_max: z.number().nullable().optional(),
+    });
+    const data = thresholdSchema.parse(req.body);
+
+    const result = await pool.query(
+      `UPDATE sensors
+       SET temp_min=$3, temp_max=$4, air_hum_min=$5, air_hum_max=$6,
+           soil_hum_min=$7, soil_hum_max=$8
+       WHERE id=$1 AND user_id=$2
+       RETURNING id, temp_min, temp_max, air_hum_min, air_hum_max, soil_hum_min, soil_hum_max`,
+      [sensorId, userId,
+       data.temp_min ?? null, data.temp_max ?? null,
+       data.air_hum_min ?? null, data.air_hum_max ?? null,
+       data.soil_hum_min ?? null, data.soil_hum_max ?? null]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: `Sensor ${sensorId} no encontrado para el usuario ${userId}` });
+    }
+
+    return res.json({ thresholds: result.rows[0] });
+  } catch (e) {
+    return res.status(400).json({ message: e.message ?? "Error actualizando umbrales" });
   }
 });
 
