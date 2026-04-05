@@ -41,7 +41,7 @@ router.get("/", requireAuth, async (req, res) => {
     const userId = req.user.id;
     const result = await pool.query(
       `SELECT id, user_id, device_id, name, location, is_active, created_at, api_key,
-              temp_min, temp_max, air_hum_min, air_hum_max, soil_hum_min, soil_hum_max
+              temp_min, temp_max, air_hum_min, air_hum_max, co2_min, co2_max, methane_min, methane_max
        FROM sensors
        WHERE user_id = $1
        ORDER BY id DESC`,
@@ -85,21 +85,24 @@ router.put("/:id/thresholds", requireAuth, async (req, res) => {
       temp_max:     z.number().nullable().optional(),
       air_hum_min:  z.number().nullable().optional(),
       air_hum_max:  z.number().nullable().optional(),
-      soil_hum_min: z.number().nullable().optional(),
-      soil_hum_max: z.number().nullable().optional(),
+      co2_min:      z.number().nullable().optional(),
+      co2_max:      z.number().nullable().optional(),
+      methane_min:  z.number().nullable().optional(),
+      methane_max:  z.number().nullable().optional(),
     });
     const data = thresholdSchema.parse(req.body);
 
     const result = await pool.query(
       `UPDATE sensors
        SET temp_min=$3, temp_max=$4, air_hum_min=$5, air_hum_max=$6,
-           soil_hum_min=$7, soil_hum_max=$8
+           co2_min=$7, co2_max=$8, methane_min=$9, methane_max=$10
        WHERE id=$1 AND user_id=$2
-       RETURNING id, temp_min, temp_max, air_hum_min, air_hum_max, soil_hum_min, soil_hum_max`,
+       RETURNING id, temp_min, temp_max, air_hum_min, air_hum_max, co2_min, co2_max, methane_min, methane_max`,
       [sensorId, userId,
        data.temp_min ?? null, data.temp_max ?? null,
        data.air_hum_min ?? null, data.air_hum_max ?? null,
-       data.soil_hum_min ?? null, data.soil_hum_max ?? null]
+       data.co2_min ?? null, data.co2_max ?? null,
+       data.methane_min ?? null, data.methane_max ?? null]
     );
 
     if (result.rowCount === 0) {
@@ -136,7 +139,7 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
     }
 
     const readings = await pool.query(
-      `SELECT id, sensor_id, temperature, air_humidity, soil_humidity, created_at
+      `SELECT id, sensor_id, temperature, air_humidity, co2, methane, created_at
        FROM sensor_readings
        WHERE sensor_id = $1
          AND created_at >= NOW() - INTERVAL '${interval}'
