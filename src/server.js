@@ -9,6 +9,7 @@ import userRoutes from "./routes/user.routes.js";
 import sensorRoutes from "./routes/sensorRoutes.js";
 import ingestRoutes from "./routes/ingestRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
+import pumpRoutes from "./routes/pumpRoutes.js";
 
 import { errorHandler } from "./middleware/error.middleware.js";
 import { testDb } from "./db.js";
@@ -34,6 +35,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/sensors", sensorRoutes);
+app.use("/api/sensors", pumpRoutes);
 app.use("/api/ingest", ingestRoutes);
 app.use("/api/alerts", alertRoutes);
 

@@ -104,4 +104,52 @@ router.post("/", async (req, res) => {
   }
 });
 
+// ── GET /api/ingest/pump-status ───────────────────────────────────────────────
+// El ESP32 llama a esto para saber si debe encender o apagar la bomba.
+// Query params: device_id, api_key
+router.get("/pump-status", async (req, res) => {
+  try {
+    const { device_id, api_key } = req.query;
+    if (!device_id || !api_key) {
+      return res.status(400).json({ message: "device_id y api_key requeridos" });
+    }
+
+    const result = await pool.query(
+      `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes
+       FROM sensors WHERE device_id=$1 AND api_key=$2`,
+      [device_id, api_key]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(401).json({ message: "Sensor no autorizado" });
+    }
+
+    const { pump_schedule_enabled, pump_start_time, pump_duration_minutes } = result.rows[0];
+
+    if (!pump_schedule_enabled || !pump_start_time || !pump_duration_minutes) {
+      return res.json({ pump_on: false });
+    }
+
+    // Calcular si estamos dentro del intervalo programado (hora Colombia UTC-5)
+    const nowCO = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
+    const nowMinutes = nowCO.getHours() * 60 + nowCO.getMinutes();
+
+    const [startH, startM] = pump_start_time.toString().split(":").map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes   = startMinutes + pump_duration_minutes;
+
+    // Soporte para rangos que cruzan medianoche
+    let pump_on;
+    if (endMinutes <= 1440) {
+      pump_on = nowMinutes >= startMinutes && nowMinutes < endMinutes;
+    } else {
+      pump_on = nowMinutes >= startMinutes || nowMinutes < (endMinutes - 1440);
+    }
+
+    return res.json({ pump_on });
+  } catch (e) {
+    return res.status(500).json({ message: "Error consultando estado de bomba" });
+  }
+});
+
 export default router;
