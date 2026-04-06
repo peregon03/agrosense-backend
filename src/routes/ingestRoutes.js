@@ -116,7 +116,7 @@ router.get("/pump-status", async (req, res) => {
 
     const result = await pool.query(
       `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes
-       FROM sensors WHERE device_id=$1 AND api_key=$2`,
+       FROM sensors WHERE LOWER(device_id)=LOWER($1) AND api_key=$2`,
       [device_id, api_key]
     );
 
