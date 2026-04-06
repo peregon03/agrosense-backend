@@ -41,7 +41,8 @@ router.get("/", requireAuth, async (req, res) => {
     const userId = req.user.id;
     const result = await pool.query(
       `SELECT id, user_id, device_id, name, location, is_active, created_at, api_key,
-              temp_min, temp_max, air_hum_min, air_hum_max, co2_min, co2_max, methane_min, methane_max
+              temp_min, temp_max, air_hum_min, air_hum_max, co2_min, co2_max, methane_min, methane_max,
+              pump_manual_override
        FROM sensors
        WHERE user_id = $1
        ORDER BY id DESC`,

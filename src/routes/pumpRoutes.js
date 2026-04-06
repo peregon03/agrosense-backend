@@ -64,4 +64,33 @@ router.put("/:id/pump-schedule", requireAuth, async (req, res) => {
   }
 });
 
+// ── PUT /api/sensors/:id/pump-override ────────────────────────────────────────
+// Control manual remoto: override=true|false|null (null = volver a automático)
+router.put("/:id/pump-override", requireAuth, async (req, res) => {
+  try {
+    const userId   = req.user.id;
+    const sensorId = Number(req.params.id);
+
+    const schema = z.object({
+      override: z.boolean().nullable(),
+    });
+    const { override } = schema.parse(req.body);
+
+    const result = await pool.query(
+      `UPDATE sensors SET pump_manual_override=$3
+       WHERE id=$1 AND user_id=$2
+       RETURNING pump_manual_override`,
+      [sensorId, userId, override]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Sensor no encontrado" });
+    }
+
+    return res.json({ pump_manual_override: result.rows[0].pump_manual_override });
+  } catch (e) {
+    return res.status(400).json({ message: e.message ?? "Error actualizando control manual" });
+  }
+});
+
 export default router;

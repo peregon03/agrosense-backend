@@ -115,7 +115,7 @@ router.get("/pump-status", async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes
+      `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes, pump_manual_override
        FROM sensors WHERE LOWER(device_id)=LOWER($1) AND api_key=$2`,
       [device_id, api_key]
     );
@@ -124,10 +124,15 @@ router.get("/pump-status", async (req, res) => {
       return res.status(401).json({ message: "Sensor no autorizado" });
     }
 
-    const { pump_schedule_enabled, pump_start_time, pump_duration_minutes } = result.rows[0];
+    const { pump_schedule_enabled, pump_start_time, pump_duration_minutes, pump_manual_override } = result.rows[0];
+
+    // Control manual tiene prioridad sobre la programación automática
+    if (pump_manual_override !== null && pump_manual_override !== undefined) {
+      return res.json({ pump_on: pump_manual_override, mode: "manual" });
+    }
 
     if (!pump_schedule_enabled || !pump_start_time || !pump_duration_minutes) {
-      return res.json({ pump_on: false });
+      return res.json({ pump_on: false, mode: "auto" });
     }
 
     // Calcular si estamos dentro del intervalo programado (hora Colombia UTC-5)
@@ -146,7 +151,7 @@ router.get("/pump-status", async (req, res) => {
       pump_on = nowMinutes >= startMinutes || nowMinutes < (endMinutes - 1440);
     }
 
-    return res.json({ pump_on });
+    return res.json({ pump_on, mode: "auto" });
   } catch (e) {
     return res.status(500).json({ message: "Error consultando estado de bomba" });
   }
