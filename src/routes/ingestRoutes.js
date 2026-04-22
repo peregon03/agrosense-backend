@@ -114,41 +114,51 @@ router.get("/pump-status", async (req, res) => {
       return res.status(400).json({ message: "device_id y api_key requeridos" });
     }
 
-    const result = await pool.query(
-      `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes, pump_manual_override
+    const sensorResult = await pool.query(
+      `SELECT id, pump_manual_override
        FROM sensors WHERE LOWER(device_id)=LOWER($1) AND api_key=$2`,
       [device_id, api_key]
     );
 
-    if (result.rowCount === 0) {
+    if (sensorResult.rowCount === 0) {
       return res.status(401).json({ message: "Sensor no autorizado" });
     }
 
-    const { pump_schedule_enabled, pump_start_time, pump_duration_minutes, pump_manual_override } = result.rows[0];
+    const { id: sensorId, pump_manual_override } = sensorResult.rows[0];
 
     // Control manual tiene prioridad sobre la programación automática
     if (pump_manual_override !== null && pump_manual_override !== undefined) {
       return res.json({ pump_on: pump_manual_override, mode: "manual" });
     }
 
-    if (!pump_schedule_enabled || !pump_start_time || !pump_duration_minutes) {
+    // Obtener todas las programaciones activas del sensor
+    const schedulesResult = await pool.query(
+      `SELECT start_time, duration_minutes
+       FROM pump_schedules
+       WHERE sensor_id=$1 AND enabled=TRUE`,
+      [sensorId]
+    );
+
+    if (schedulesResult.rowCount === 0) {
       return res.json({ pump_on: false, mode: "auto" });
     }
 
-    // Calcular si estamos dentro del intervalo programado (hora Colombia UTC-5)
+    // Calcular si la hora actual cae en alguna programación (hora Colombia UTC-5)
     const nowCO = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
     const nowMinutes = nowCO.getHours() * 60 + nowCO.getMinutes();
 
-    const [startH, startM] = pump_start_time.toString().split(":").map(Number);
-    const startMinutes = startH * 60 + startM;
-    const endMinutes   = startMinutes + pump_duration_minutes;
+    let pump_on = false;
+    for (const { start_time, duration_minutes } of schedulesResult.rows) {
+      const [startH, startM] = start_time.toString().split(":").map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes   = startMinutes + duration_minutes;
 
-    // Soporte para rangos que cruzan medianoche
-    let pump_on;
-    if (endMinutes <= 1440) {
-      pump_on = nowMinutes >= startMinutes && nowMinutes < endMinutes;
-    } else {
-      pump_on = nowMinutes >= startMinutes || nowMinutes < (endMinutes - 1440);
+      // Soporte para rangos que cruzan medianoche
+      if (endMinutes <= 1440) {
+        if (nowMinutes >= startMinutes && nowMinutes < endMinutes) { pump_on = true; break; }
+      } else {
+        if (nowMinutes >= startMinutes || nowMinutes < (endMinutes - 1440)) { pump_on = true; break; }
+      }
     }
 
     return res.json({ pump_on, mode: "auto" });

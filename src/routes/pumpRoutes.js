@@ -5,76 +5,157 @@ import { requireAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// ── GET /api/sensors/:id/pump-schedule ────────────────────────────────────────
-// Obtener programación de bomba de un sensor (app)
-router.get("/:id/pump-schedule", requireAuth, async (req, res) => {
+const scheduleSchema = z.object({
+  label:            z.string().max(60).nullable().optional(),
+  start_time:       z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:MM requerido"),
+  duration_minutes: z.number().int().min(1).max(1440),
+  enabled:          z.boolean().optional().default(true),
+});
+
+// Helper: verifica que el sensor pertenece al usuario autenticado
+async function resolveSensorId(req, res) {
+  const sensorId = Number(req.params.id);
+  const userId   = req.user.id;
+  const check = await pool.query(
+    "SELECT id FROM sensors WHERE id=$1 AND user_id=$2",
+    [sensorId, userId]
+  );
+  if (check.rowCount === 0) {
+    res.status(404).json({ message: "Sensor no encontrado" });
+    return null;
+  }
+  return sensorId;
+}
+
+// ── GET /api/sensors/:id/pump-schedules ──────────────────────────────────────
+// Listar todas las programaciones de riego de un sensor
+router.get("/:id/pump-schedules", requireAuth, async (req, res) => {
   try {
-    const userId   = req.user.id;
-    const sensorId = Number(req.params.id);
+    const sensorId = await resolveSensorId(req, res);
+    if (!sensorId) return;
 
     const result = await pool.query(
-      `SELECT pump_schedule_enabled, pump_start_time, pump_duration_minutes
-       FROM sensors WHERE id=$1 AND user_id=$2`,
-      [sensorId, userId]
+      `SELECT id, sensor_id, label, start_time, duration_minutes, enabled, created_at
+       FROM pump_schedules
+       WHERE sensor_id = $1
+       ORDER BY start_time ASC`,
+      [sensorId]
+    );
+
+    return res.json({ schedules: result.rows });
+  } catch (e) {
+    return res.status(500).json({ message: "Error obteniendo programaciones" });
+  }
+});
+
+// ── POST /api/sensors/:id/pump-schedules ─────────────────────────────────────
+// Crear una nueva programación de riego
+router.post("/:id/pump-schedules", requireAuth, async (req, res) => {
+  try {
+    const sensorId = await resolveSensorId(req, res);
+    if (!sensorId) return;
+
+    const data = scheduleSchema.parse(req.body);
+
+    const result = await pool.query(
+      `INSERT INTO pump_schedules (sensor_id, label, start_time, duration_minutes, enabled)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, sensor_id, label, start_time, duration_minutes, enabled, created_at`,
+      [sensorId, data.label ?? null, data.start_time, data.duration_minutes, data.enabled ?? true]
+    );
+
+    return res.status(201).json({ schedule: result.rows[0] });
+  } catch (e) {
+    return res.status(400).json({ message: e.message ?? "Error creando programación" });
+  }
+});
+
+// ── PUT /api/sensors/:id/pump-schedules/:scheduleId ──────────────────────────
+// Editar una programación existente (todos los campos)
+router.put("/:id/pump-schedules/:scheduleId", requireAuth, async (req, res) => {
+  try {
+    const sensorId   = await resolveSensorId(req, res);
+    if (!sensorId) return;
+    const scheduleId = Number(req.params.scheduleId);
+
+    const data = scheduleSchema.parse(req.body);
+
+    const result = await pool.query(
+      `UPDATE pump_schedules
+       SET label=$3, start_time=$4, duration_minutes=$5, enabled=$6
+       WHERE id=$1 AND sensor_id=$2
+       RETURNING id, sensor_id, label, start_time, duration_minutes, enabled, created_at`,
+      [scheduleId, sensorId, data.label ?? null, data.start_time, data.duration_minutes, data.enabled ?? true]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Sensor no encontrado" });
+      return res.status(404).json({ message: "Programación no encontrada" });
     }
 
     return res.json({ schedule: result.rows[0] });
   } catch (e) {
-    return res.status(500).json({ message: "Error obteniendo programación" });
+    return res.status(400).json({ message: e.message ?? "Error actualizando programación" });
   }
 });
 
-// ── PUT /api/sensors/:id/pump-schedule ────────────────────────────────────────
-// Guardar programación de bomba (app)
-router.put("/:id/pump-schedule", requireAuth, async (req, res) => {
+// ── PATCH /api/sensors/:id/pump-schedules/:scheduleId/toggle ─────────────────
+// Activar / desactivar una programación individual (toggle rápido desde la lista)
+router.patch("/:id/pump-schedules/:scheduleId/toggle", requireAuth, async (req, res) => {
   try {
-    const userId   = req.user.id;
-    const sensorId = Number(req.params.id);
+    const sensorId   = await resolveSensorId(req, res);
+    if (!sensorId) return;
+    const scheduleId = Number(req.params.scheduleId);
 
-    const schema = z.object({
-      pump_schedule_enabled:   z.boolean(),
-      pump_start_time:         z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:MM requerido"),
-      pump_duration_minutes:   z.number().int().min(1).max(1440),
-    });
-
-    const data = schema.parse(req.body);
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
 
     const result = await pool.query(
-      `UPDATE sensors
-       SET pump_schedule_enabled=$3, pump_start_time=$4, pump_duration_minutes=$5
-       WHERE id=$1 AND user_id=$2
-       RETURNING pump_schedule_enabled, pump_start_time, pump_duration_minutes`,
-      [sensorId, userId,
-       data.pump_schedule_enabled,
-       data.pump_start_time,
-       data.pump_duration_minutes]
+      `UPDATE pump_schedules SET enabled=$3
+       WHERE id=$1 AND sensor_id=$2
+       RETURNING id, sensor_id, label, start_time, duration_minutes, enabled, created_at`,
+      [scheduleId, sensorId, enabled]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Sensor no encontrado" });
+      return res.status(404).json({ message: "Programación no encontrada" });
     }
 
     return res.json({ schedule: result.rows[0] });
   } catch (e) {
-    return res.status(400).json({ message: e.message ?? "Error guardando programación" });
+    return res.status(400).json({ message: e.message ?? "Error al cambiar estado" });
   }
 });
 
-// ── PUT /api/sensors/:id/pump-override ────────────────────────────────────────
+// ── DELETE /api/sensors/:id/pump-schedules/:scheduleId ───────────────────────
+// Eliminar una programación de riego
+router.delete("/:id/pump-schedules/:scheduleId", requireAuth, async (req, res) => {
+  try {
+    const sensorId   = await resolveSensorId(req, res);
+    if (!sensorId) return;
+    const scheduleId = Number(req.params.scheduleId);
+
+    const result = await pool.query(
+      "DELETE FROM pump_schedules WHERE id=$1 AND sensor_id=$2 RETURNING id",
+      [scheduleId, sensorId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Programación no encontrada" });
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ message: "Error eliminando programación" });
+  }
+});
+
+// ── PUT /api/sensors/:id/pump-override ───────────────────────────────────────
 // Control manual remoto: override=true|false|null (null = volver a automático)
 router.put("/:id/pump-override", requireAuth, async (req, res) => {
   try {
     const userId   = req.user.id;
     const sensorId = Number(req.params.id);
 
-    const schema = z.object({
-      override: z.boolean().nullable(),
-    });
-    const { override } = schema.parse(req.body);
+    const { override } = z.object({ override: z.boolean().nullable() }).parse(req.body);
 
     const result = await pool.query(
       `UPDATE sensors SET pump_manual_override=$3
