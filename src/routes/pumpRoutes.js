@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 import { checkSensorAccess } from "../middleware/sensorAccess.js";
+import { logAction } from "../middleware/logAction.js";
 
 const router = Router();
 
@@ -65,7 +66,11 @@ router.post("/:id/pump-schedules", requireAuth, async (req, res) => {
        RETURNING id, sensor_id, label, start_time, duration_minutes, enabled, created_at`,
       [sensorId, data.label ?? null, data.start_time, data.duration_minutes, data.enabled ?? true]
     );
-    return res.status(201).json({ schedule: result.rows[0] });
+    const created = result.rows[0];
+    logAction(sensorId, req.user.id, "schedule_created", {
+      start_time: created.start_time, duration_minutes: created.duration_minutes, label: created.label
+    });
+    return res.status(201).json({ schedule: created });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error creando programación" });
   }
@@ -91,7 +96,11 @@ router.put("/:id/pump-schedules/:scheduleId", requireAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Programación no encontrada" });
     }
-    return res.json({ schedule: result.rows[0] });
+    const updated = result.rows[0];
+    logAction(sensorId, req.user.id, "schedule_updated", {
+      start_time: updated.start_time, duration_minutes: updated.duration_minutes, label: updated.label
+    });
+    return res.json({ schedule: updated });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error actualizando programación" });
   }
@@ -116,6 +125,9 @@ router.patch("/:id/pump-schedules/:scheduleId/toggle", requireAuth, async (req, 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Programación no encontrada" });
     }
+    logAction(sensorId, req.user.id, enabled ? "schedule_enabled" : "schedule_disabled", {
+      schedule_id: scheduleId
+    });
     return res.json({ schedule: result.rows[0] });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error al cambiar estado" });
@@ -137,6 +149,7 @@ router.delete("/:id/pump-schedules/:scheduleId", requireAuth, async (req, res) =
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Programación no encontrada" });
     }
+    logAction(sensorId, req.user.id, "schedule_deleted", { schedule_id: scheduleId });
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ message: "Error eliminando programación" });
@@ -161,6 +174,8 @@ router.put("/:id/pump-override", requireAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Sensor no encontrado" });
     }
+    const actionType = override === true ? "pump_on" : override === false ? "pump_off" : "pump_auto";
+    logAction(sensorId, req.user.id, actionType);
     return res.json({ pump_manual_override: result.rows[0].pump_manual_override });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error actualizando control manual" });

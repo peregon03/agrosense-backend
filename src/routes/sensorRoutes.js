@@ -4,6 +4,7 @@ import { z } from "zod";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 import { checkSensorAccess } from "../middleware/sensorAccess.js";
+import { logAction } from "../middleware/logAction.js";
 
 const router = Router();
 
@@ -288,6 +289,7 @@ router.put("/:id/thresholds", requireAuth, async (req, res) => {
       return res.status(404).json({ message: `Sensor ${sensorId} no encontrado` });
     }
 
+    logAction(sensorId, userId, "thresholds_updated");
     return res.json({ thresholds: result.rows[0] });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error actualizando umbrales" });
@@ -328,6 +330,41 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
     return res.json({ readings: readings.rows, range, count: readings.rowCount });
   } catch (e) {
     return res.status(500).json({ message: "Error consultando lecturas" });
+  }
+});
+
+// ── Historial de acciones de un sensor (solo propietario) ─────────────────────
+router.get("/:id/logs", requireAuth, async (req, res) => {
+  try {
+    const userId   = req.user.id;
+    const sensorId = Number(req.params.id);
+
+    const ownerCheck = await pool.query(
+      "SELECT id FROM sensors WHERE id=$1 AND user_id=$2",
+      [sensorId, userId]
+    );
+    if (ownerCheck.rowCount === 0) {
+      return res.status(404).json({ message: "Sensor no encontrado" });
+    }
+
+    const limit  = Math.min(Number(req.query.limit  ?? 100), 200);
+    const offset = Number(req.query.offset ?? 0);
+
+    const result = await pool.query(
+      `SELECT
+         l.id, l.sensor_id, l.action_type, l.created_at,
+         u.first_name, u.last_name, u.email
+       FROM sensor_action_logs l
+       LEFT JOIN users u ON u.id = l.user_id
+       WHERE l.sensor_id = $1
+       ORDER BY l.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [sensorId, limit, offset]
+    );
+
+    return res.json({ logs: result.rows, count: result.rowCount });
+  } catch (e) {
+    return res.status(500).json({ message: "Error consultando historial" });
   }
 });
 

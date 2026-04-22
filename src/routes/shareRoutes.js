@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { logAction } from "../middleware/logAction.js";
 
 const router = Router();
 
@@ -118,13 +119,15 @@ router.post("/:id/share", requireAuth, async (req, res) => {
       [sensorId, ownerId, targetUser.id, data.can_view_graphs, data.can_schedule, data.can_control_pump]
     );
 
+    const share = result.rows[0];
+    logAction(sensorId, ownerId, "sensor_shared", {
+      shared_with_email: targetUser.email,
+      can_view_graphs: data.can_view_graphs,
+      can_schedule: data.can_schedule,
+      can_control_pump: data.can_control_pump
+    });
     return res.status(201).json({
-      share: {
-        ...result.rows[0],
-        email:      targetUser.email,
-        first_name: targetUser.first_name,
-        last_name:  targetUser.last_name,
-      }
+      share: { ...share, email: targetUser.email, first_name: targetUser.first_name, last_name: targetUser.last_name }
     });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error compartiendo sensor" });
@@ -159,6 +162,12 @@ router.put("/:id/shares/:shareId", requireAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Acceso no encontrado" });
     }
+    logAction(sensorId, ownerId, "share_updated", {
+      share_id: shareId,
+      can_view_graphs: data.can_view_graphs,
+      can_schedule: data.can_schedule,
+      can_control_pump: data.can_control_pump
+    });
     return res.json({ share: result.rows[0] });
   } catch (e) {
     return res.status(400).json({ message: e.message ?? "Error actualizando permisos" });
@@ -188,6 +197,7 @@ router.delete("/:id/shares/:shareId", requireAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Acceso no encontrado" });
     }
+    logAction(sensorId, ownerId, "share_revoked", { share_id: shareId });
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ message: "Error revocando acceso" });
