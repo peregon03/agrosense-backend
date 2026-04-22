@@ -1,7 +1,7 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
 import { pool } from "../db.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.middleware.js";
 import { checkSensorAccess } from "../middleware/sensorAccess.js";
 
 const router = Router();
