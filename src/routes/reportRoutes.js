@@ -230,7 +230,7 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
   y += 68;
 
   // ── Estadísticas ───────────────────────────────────────────────────────────
-  const humVals  = readings.map(r => parseFloat(r.humidity)).filter(v => !isNaN(v));
+  const humVals  = readings.map(r => parseFloat(r.air_humidity)).filter(v => !isNaN(v));
   const tempVals = readings.map(r => parseFloat(r.temperature)).filter(v => !isNaN(v));
   const humStats  = calcStats(humVals);
   const tempStats = calcStats(tempVals);
@@ -251,7 +251,7 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
     y += 18;
 
     const ch = 105;
-    drawLineChart(doc, readings, "humidity",    M + 42, y, CW - 42, ch, "Humedad del suelo (%)",  C.humidity,    "%");
+    drawLineChart(doc, readings, "air_humidity", M + 42, y, CW - 42, ch, "Humedad del suelo (%)", C.humidity, "%");
     y += ch + 28;
     drawLineChart(doc, readings, "temperature", M + 42, y, CW - 42, ch, "Temperatura (°C)",       C.temperature, "°C");
     y += ch + 30;
@@ -331,18 +331,18 @@ router.get("/:id/report", requireAuth, async (req, res) => {
     const sensor = sRows[0];
 
     const { rows: readings } = await pool.query(
-      `SELECT humidity, temperature, recorded_at
+      `SELECT air_humidity, temperature, created_at
        FROM sensor_readings
        WHERE sensor_id = $1
-         AND recorded_at >= $2::date
-         AND recorded_at <  ($3::date + interval '1 day')
-       ORDER BY recorded_at ASC
+         AND created_at >= $2::date
+         AND created_at <  ($3::date + interval '1 day')
+       ORDER BY created_at ASC
        LIMIT 2000`,
       [sensorId, from, to]
     );
 
     // Calcular stats para IA ANTES de abrir el stream del PDF
-    const humVals  = readings.map(r => parseFloat(r.humidity)).filter(v => !isNaN(v));
+    const humVals  = readings.map(r => parseFloat(r.air_humidity)).filter(v => !isNaN(v));
     const tempVals = readings.map(r => parseFloat(r.temperature)).filter(v => !isNaN(v));
     const humStats  = { ...calcStats(humVals),  trend: trend(humVals) };
     const tempStats = { ...calcStats(tempVals), trend: trend(tempVals) };
