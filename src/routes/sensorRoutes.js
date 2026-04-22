@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { checkSensorAccess } from "../middleware/sensorAccess.js";
 
 const router = Router();
 
@@ -308,12 +309,11 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
     const range    = Object.hasOwn(intervalMap, req.query.range ?? "") ? req.query.range : "today";
     const interval = intervalMap[range];
 
-    const sensorCheck = await pool.query(
-      "SELECT id FROM sensors WHERE id=$1 AND user_id=$2",
-      [sensorId, userId]
-    );
-    if (sensorCheck.rowCount === 0) {
-      return res.status(404).json({ message: "Sensor no encontrado" });
+    const access = await checkSensorAccess(sensorId, userId, "can_view_graphs");
+    if (!access.authorized) {
+      return res.status(access.shareRow ? 403 : 404).json({
+        message: access.shareRow ? "Sin permiso para ver gráficas" : "Sensor no encontrado"
+      });
     }
 
     const readings = await pool.query(

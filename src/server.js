@@ -6,6 +6,7 @@ dotenv.config();
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import shareRoutes from "./routes/shareRoutes.js";
 import sensorRoutes from "./routes/sensorRoutes.js";
 import ingestRoutes from "./routes/ingestRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
@@ -34,6 +35,7 @@ app.get("/", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/sensors", shareRoutes);
 app.use("/api/sensors", sensorRoutes);
 app.use("/api/sensors", pumpRoutes);
 app.use("/api/ingest", ingestRoutes);
