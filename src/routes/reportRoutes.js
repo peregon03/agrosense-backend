@@ -43,11 +43,20 @@ function trend(values) {
     : `Tendencia descendente (${diff.toFixed(1)})`;
 }
 
+const MONTHS_ES = [
+  "enero","febrero","marzo","abril","mayo","junio",
+  "julio","agosto","septiembre","octubre","noviembre","diciembre"
+];
+
+// Convierte un Date a hora de Colombia (UTC-5) sin depender de ICU
+function toBogota(date) {
+  return new Date(date.getTime() - 5 * 60 * 60 * 1000);
+}
+
 function fmtDate(iso) {
   try {
-    return new Date(iso).toLocaleDateString("es-CO", {
-      day: "2-digit", month: "long", year: "numeric"
-    });
+    const d = toBogota(new Date(iso));
+    return `${String(d.getUTCDate()).padStart(2,"0")} de ${MONTHS_ES[d.getUTCMonth()]} de ${d.getUTCFullYear()}`;
   } catch { return iso.slice(0, 10); }
 }
 
@@ -210,10 +219,9 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
   const M  = 50;
   const CW = PW - M * 2;
 
-  const now = new Date().toLocaleDateString("es-CO", {
-    day: "2-digit", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit"
-  });
+  const d   = toBogota(new Date());
+  const pad = n => String(n).padStart(2, "0");
+  const now = `${pad(d.getUTCDate())} de ${MONTHS_ES[d.getUTCMonth()]} de ${d.getUTCFullYear()}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 
   // ── Encabezado ─────────────────────────────────────────────────────────────
   doc.rect(0, 0, PW, 82).fillColor(C.green).fill();
@@ -310,9 +318,9 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
     y += boxH;
   }
 
-  // ── Pie de página ──────────────────────────────────────────────────────────
-  const fy = PH - 26;
-  doc.moveTo(M, fy - 6).lineTo(PW - M, fy - 6)
+  // ── Pie de página (dentro del margen inferior de 10pt) ────────────────────
+  const fy = PH - 22;   // < PH - 10 → no dispara paginación automática
+  doc.moveTo(M, fy - 8).lineTo(PW - M, fy - 8)
      .strokeColor(C.grid).lineWidth(0.5).stroke();
   doc.font("Helvetica").fontSize(7).fillColor(C.muted)
      .text("Informe generado automáticamente por AgroSense · Electroinova", M, fy, {
@@ -367,7 +375,7 @@ router.get("/:id/report", requireAuth, async (req, res) => {
       `attachment; filename="informe_${safeName}_${from}_${to}.pdf"`
     );
 
-    const doc = new PDFDocument({ margin: 50, size: "A4" });
+    const doc = new PDFDocument({ margins: { top: 50, left: 50, right: 50, bottom: 10 }, size: "A4" });
     doc.pipe(res);
     buildPdf(doc, sensor, readings, from, to, insights);
     doc.end();
