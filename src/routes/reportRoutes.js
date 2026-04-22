@@ -60,22 +60,29 @@ function drawLineChart(doc, readings, field, ox, oy, w, h, title, color, unit) {
   const minV  = Math.min(...raw);
   const maxV  = Math.max(...raw);
   const range = (maxV - minV) || 1;
-  const lo    = minV - range * 0.1;
-  const hi    = maxV + range * 0.1;
+  const lo    = minV - range * 0.12;
+  const hi    = maxV + range * 0.12;
   const span  = hi - lo;
 
-  // Fondo y borde
-  doc.rect(ox, oy, w, h).fillColor(C.greenPale).fill();
+  // ── Barra de título dentro de la caja ──────────────────────────────────────
+  const titleH = 22;
+  doc.rect(ox, oy, w, titleH).fillColor(color).fillOpacity(0.18).fill();
+  doc.fillOpacity(1);
+  doc.rect(ox, oy, 4, titleH).fillColor(color).fill();
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(C.text)
+     .text(title, ox + 10, oy + 7, { width: w - 14 });
+
+  // ── Área del gráfico debajo del título ─────────────────────────────────────
+  const chartOy = oy + titleH;
+  const chartH  = h - titleH;
+
+  doc.rect(ox, chartOy, w, chartH).fillColor(C.greenPale).fill();
   doc.rect(ox, oy, w, h).strokeColor(C.grid).lineWidth(0.5).stroke();
 
-  // Título
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(C.text)
-     .text(title, ox, oy - 14, { width: w });
-
-  // Cuadrícula y etiquetas del eje Y
+  // ── Cuadrícula y etiquetas del eje Y ───────────────────────────────────────
   doc.font("Helvetica").fontSize(6.5);
   for (let i = 0; i <= 4; i++) {
-    const gy = oy + h - (i / 4) * h;
+    const gy = chartOy + chartH - (i / 4) * chartH;
     const gv = lo + (i / 4) * span;
     doc.moveTo(ox, gy).lineTo(ox + w, gy)
        .strokeColor(C.grid).lineWidth(0.5).stroke();
@@ -83,39 +90,34 @@ function drawLineChart(doc, readings, field, ox, oy, w, h, title, color, unit) {
        .text(`${gv.toFixed(1)}${unit}`, ox - 38, gy - 4, { width: 35, align: "right" });
   }
 
-  // Clipping para no salir del área del gráfico
-  doc.save().rect(ox, oy, w, h).clip();
+  // ── Línea y área sombreada ─────────────────────────────────────────────────
+  doc.save().rect(ox, chartOy, w, chartH).clip();
 
   const pts = raw.map((v, i) => ({
     x: ox + (i / (raw.length - 1)) * w,
-    y: oy + h - ((v - lo) / span) * h
+    y: chartOy + chartH - ((v - lo) / span) * chartH
   }));
 
-  // Área sombreada bajo la línea
-  doc.moveTo(pts[0].x, oy + h);
+  doc.moveTo(pts[0].x, chartOy + chartH);
   pts.forEach(p => doc.lineTo(p.x, p.y));
-  doc.lineTo(pts[pts.length - 1].x, oy + h)
-     .closePath()
-     .fillColor(color)
-     .fillOpacity(0.1)
-     .fill();
+  doc.lineTo(pts[pts.length - 1].x, chartOy + chartH)
+     .closePath().fillColor(color).fillOpacity(0.1).fill();
   doc.fillOpacity(1);
 
-  // Línea principal
   doc.moveTo(pts[0].x, pts[0].y);
   pts.slice(1).forEach(p => doc.lineTo(p.x, p.y));
   doc.strokeColor(color).lineWidth(1.5).stroke();
 
   doc.restore();
 
-  // Etiquetas min y max sobre los puntos
+  // ── Etiquetas min / max ────────────────────────────────────────────────────
   const iMin = raw.indexOf(minV);
   const iMax = raw.indexOf(maxV);
   doc.font("Helvetica").fontSize(6);
   doc.fillColor(C.warnHigh)
-     .text(`${minV.toFixed(1)}${unit}`, pts[iMin].x - 12, pts[iMin].y + 3, { width: 26, align: "center" });
+     .text(`${minV.toFixed(1)}${unit}`, pts[iMin].x - 13, pts[iMin].y + 3,  { width: 28, align: "center" });
   doc.fillColor(C.greenMid)
-     .text(`${maxV.toFixed(1)}${unit}`, pts[iMax].x - 12, pts[iMax].y - 10, { width: 26, align: "center" });
+     .text(`${maxV.toFixed(1)}${unit}`, pts[iMax].x - 13, pts[iMax].y - 11, { width: 28, align: "center" });
 }
 
 // ── Caja de estadísticas ──────────────────────────────────────────────────────
@@ -154,20 +156,28 @@ async function generateInsights(sensor, humStats, tempStats, from, to, count) {
     const client = new Anthropic();
 
     const prompt =
-`Eres un agrónomo experto. Analiza los datos de este sensor agrícola y redacta un informe ejecutivo conciso en español.
+`Eres un experto en monitoreo ambiental y producción biológica. Analizas datos de sensores IoT para sistemas de producción muy variados: cultivos agrícolas tradicionales, hongos, insectos (como mosca soldado negra), acuaponía, biodigestores, invernaderos y más. Tu análisis debe ser versátil y no asumir el tipo de producción a menos que el nombre del sensor lo indique claramente.
+
+Analiza los siguientes datos ambientales y redacta un informe ejecutivo conciso en español.
 
 Sensor: ${sensor.name}
 Ubicación: ${sensor.location || "No especificada"}
 Período analizado: ${from} al ${to}
 Total de registros: ${count}
 
-HUMEDAD DEL SUELO
+HUMEDAD DEL AIRE
   Mínima: ${humStats.min.toFixed(1)}%  |  Promedio: ${humStats.avg}%  |  Máxima: ${humStats.max.toFixed(1)}%
   Tendencia: ${humStats.trend}
 
 TEMPERATURA AMBIENTE
   Mínima: ${tempStats.min.toFixed(1)}°C  |  Promedio: ${tempStats.avg}°C  |  Máxima: ${tempStats.max.toFixed(1)}°C
   Tendencia: ${tempStats.trend}
+
+Considera:
+- Si las condiciones son estables y dentro de rangos óptimos generales, indícalo positivamente.
+- Si hay variaciones extremas o tendencias preocupantes, señálalas con criterio técnico.
+- Las recomendaciones deben ser accionables y aplicables al contexto inferido del sensor.
+- No uses términos específicos de un solo tipo de cultivo si el nombre del sensor no lo sugiere.
 
 Responde EXACTAMENTE con este formato (sin asteriscos, sin markdown, sin símbolos extra):
 
@@ -210,7 +220,7 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
   doc.fillColor("white").font("Helvetica-Bold").fontSize(22)
      .text("AgroSense", M, 18);
   doc.font("Helvetica").fontSize(9.5)
-     .text("Informe Ejecutivo de Sensor", M, 44);
+     .text("Informe de Sensor", M, 44);
   doc.fontSize(7.5).fillColor("#A5D6A7")
      .text(`Generado: ${now}`, M, 60);
 
@@ -240,21 +250,21 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
   y += 14;
 
   const bw = (CW - 12) / 2;
-  drawStatBox(doc, M,            y, bw, 68, "Humedad del suelo", humStats,  "%",  C.humidity);
-  drawStatBox(doc, M + bw + 12,  y, bw, 68, "Temperatura",       tempStats, "°C", C.temperature);
-  y += 84;
+  drawStatBox(doc, M,            y, bw, 68, "Humedad del aire", humStats,  "%",  C.humidity);
+  drawStatBox(doc, M + bw + 12,  y, bw, 68, "Temperatura",      tempStats, "°C", C.temperature);
+  y += 88;
 
   // ── Gráficas ───────────────────────────────────────────────────────────────
   if (readings.length >= 4) {
     doc.font("Helvetica-Bold").fontSize(10.5).fillColor(C.text)
        .text("Comportamiento en el tiempo", M, y);
-    y += 18;
+    y += 14;
 
-    const ch = 105;
-    drawLineChart(doc, readings, "air_humidity", M + 42, y, CW - 42, ch, "Humedad del suelo (%)", C.humidity, "%");
-    y += ch + 28;
-    drawLineChart(doc, readings, "temperature", M + 42, y, CW - 42, ch, "Temperatura (°C)",       C.temperature, "°C");
-    y += ch + 30;
+    const ch = 120;
+    drawLineChart(doc, readings, "air_humidity", M + 42, y, CW - 42, ch, "Humedad del aire (%)", C.humidity, "%");
+    y += ch + 20;
+    drawLineChart(doc, readings, "temperature",  M + 42, y, CW - 42, ch, "Temperatura (°C)",     C.temperature, "°C");
+    y += ch + 24;
   }
 
   // ── Análisis de comportamiento ─────────────────────────────────────────────
@@ -265,13 +275,14 @@ function buildPdf(doc, sensor, readings, from, to, insights) {
   y += 14;
 
   const obs = [
-    `Humedad: ${trend(humVals)}. Rango ${humStats.min.toFixed(1)}% – ${humStats.max.toFixed(1)}% (promedio ${humStats.avg}%).`,
-    `Temperatura: ${trend(tempVals)}. Rango ${tempStats.min.toFixed(1)}°C – ${tempStats.max.toFixed(1)}°C (promedio ${tempStats.avg}°C).`,
+    `Humedad del aire: ${trend(humVals)}. Rango observado ${humStats.min.toFixed(1)}% – ${humStats.max.toFixed(1)}% (promedio ${humStats.avg}%).`,
+    `Temperatura: ${trend(tempVals)}. Rango observado ${tempStats.min.toFixed(1)}°C – ${tempStats.max.toFixed(1)}°C (promedio ${tempStats.avg}°C).`,
   ];
-  if (humStats.min  <  30) obs.push("⚠ Humedad muy baja (< 30%) detectada. Posible estrés hídrico en el cultivo.");
-  if (humStats.max  >  85) obs.push("⚠ Humedad muy alta (> 85%) detectada. Riesgo de enfermedades fúngicas.");
-  if (tempStats.max >  38) obs.push("⚠ Temperatura alta (> 38°C) detectada. Puede inhibir la absorción de nutrientes.");
-  if (tempStats.min <   5) obs.push("⚠ Temperatura baja (< 5°C) detectada. Riesgo de daño por frío en el cultivo.");
+  // Alertas generales por rangos — aplican a múltiples tipos de producción
+  if (humStats.min  <  30) obs.push("⚠ Humedad del aire muy baja (< 30%). Puede afectar negativamente procesos biológicos sensibles a la humedad.");
+  if (humStats.max  >  95) obs.push("⚠ Humedad del aire muy alta (> 95%). Riesgo de condensación, proliferación de patógenos y estrés en organismos.");
+  if (tempStats.max >  40) obs.push("⚠ Temperatura alta (> 40°C) detectada. Puede generar estrés térmico o afectar ciclos biológicos del sistema.");
+  if (tempStats.min <   5) obs.push("⚠ Temperatura baja (< 5°C) detectada. Riesgo de inhibición metabólica o daño en organismos sensibles.");
 
   doc.font("Helvetica").fontSize(8.5).fillColor(C.text);
   for (const line of obs) {
