@@ -115,7 +115,7 @@ router.get("/pump-status", async (req, res) => {
     }
 
     const sensorResult = await pool.query(
-      `SELECT id, pump_manual_override
+      `SELECT id, pump_manual_override, pump_override_expires_at
        FROM sensors WHERE LOWER(device_id)=LOWER($1) AND api_key=$2`,
       [device_id, api_key]
     );
@@ -124,16 +124,32 @@ router.get("/pump-status", async (req, res) => {
       return res.status(401).json({ message: "Sensor no autorizado" });
     }
 
-    const { id: sensorId, pump_manual_override } = sensorResult.rows[0];
+    let { id: sensorId, pump_manual_override, pump_override_expires_at } = sensorResult.rows[0];
 
-    // Control manual tiene prioridad sobre la programación automática
+    // Control manual tiene prioridad, pero verificar si expiró el tiempo máximo de encendido
     if (pump_manual_override !== null && pump_manual_override !== undefined) {
-      return res.json({ pump_on: pump_manual_override, mode: "manual" });
+      if (pump_manual_override === true && pump_override_expires_at) {
+        const expired = new Date() > new Date(pump_override_expires_at);
+        if (expired) {
+          // Auto-apagar tras 2 minutos máximo
+          await pool.query(
+            `UPDATE sensors
+             SET pump_manual_override=NULL, pump_override_pending=FALSE, pump_override_expires_at=NULL
+             WHERE id=$1`,
+            [sensorId]
+          );
+          pump_manual_override = null; // caer al modo auto a continuación
+        } else {
+          return res.json({ pump_on: true, mode: "manual" });
+        }
+      } else {
+        return res.json({ pump_on: pump_manual_override, mode: "manual" });
+      }
     }
 
     // Obtener todas las programaciones activas del sensor
     const schedulesResult = await pool.query(
-      `SELECT start_time, duration_minutes
+      `SELECT start_time, duration_seconds
        FROM pump_schedules
        WHERE sensor_id=$1 AND enabled=TRUE`,
       [sensorId]
@@ -144,26 +160,55 @@ router.get("/pump-status", async (req, res) => {
     }
 
     // Calcular si la hora actual cae en alguna programación (hora Colombia UTC-5)
-    const nowCO = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
-    const nowMinutes = nowCO.getHours() * 60 + nowCO.getMinutes();
+    const nowUTC  = new Date();
+    const nowCO   = new Date(nowUTC.getTime() - 5 * 60 * 60 * 1000);
+    const nowSeconds = nowCO.getUTCHours() * 3600 + nowCO.getUTCMinutes() * 60 + nowCO.getUTCSeconds();
 
     let pump_on = false;
-    for (const { start_time, duration_minutes } of schedulesResult.rows) {
+    for (const { start_time, duration_seconds } of schedulesResult.rows) {
       const [startH, startM] = start_time.toString().split(":").map(Number);
-      const startMinutes = startH * 60 + startM;
-      const endMinutes   = startMinutes + duration_minutes;
+      const startSeconds = startH * 3600 + startM * 60;
+      const endSeconds   = startSeconds + duration_seconds;
 
       // Soporte para rangos que cruzan medianoche
-      if (endMinutes <= 1440) {
-        if (nowMinutes >= startMinutes && nowMinutes < endMinutes) { pump_on = true; break; }
+      if (endSeconds <= 86400) {
+        if (nowSeconds >= startSeconds && nowSeconds < endSeconds) { pump_on = true; break; }
       } else {
-        if (nowMinutes >= startMinutes || nowMinutes < (endMinutes - 1440)) { pump_on = true; break; }
+        if (nowSeconds >= startSeconds || nowSeconds < (endSeconds - 86400)) { pump_on = true; break; }
       }
     }
 
     return res.json({ pump_on, mode: "auto" });
   } catch (e) {
     return res.status(500).json({ message: "Error consultando estado de bomba" });
+  }
+});
+
+// ── POST /api/ingest/pump-ack ─────────────────────────────────────────────────
+// El ESP32 llama a esto para confirmar que recibió la instrucción de bomba.
+// Body: { device_id, api_key }
+router.post("/pump-ack", async (req, res) => {
+  try {
+    const { device_id, api_key } = req.body;
+    if (!device_id || !api_key) {
+      return res.status(400).json({ message: "device_id y api_key requeridos" });
+    }
+
+    const result = await pool.query(
+      `UPDATE sensors
+       SET pump_override_pending = FALSE
+       WHERE LOWER(device_id)=LOWER($1) AND api_key=$2
+       RETURNING id`,
+      [device_id, api_key]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(401).json({ message: "Sensor no autorizado" });
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ message: "Error registrando ACK" });
   }
 });
 

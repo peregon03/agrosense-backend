@@ -135,9 +135,9 @@ router.post("/deleted/:backupId/restore", requireAuth, async (req, res) => {
     // Re-insertar programaciones de riego
     for (const s of schedules) {
       await client.query(
-        `INSERT INTO pump_schedules (sensor_id, label, start_time, duration_minutes, enabled)
+        `INSERT INTO pump_schedules (sensor_id, label, start_time, duration_seconds, enabled)
          VALUES ($1,$2,$3,$4,$5)`,
-        [newSensorId, s.label ?? null, s.start_time, s.duration_minutes, s.enabled]
+        [newSensorId, s.label ?? null, s.start_time, s.duration_seconds, s.enabled]
       );
     }
 
@@ -206,7 +206,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     // Obtener programaciones de riego
     const schedulesResult = await client.query(
-      `SELECT label, start_time, duration_minutes, enabled FROM pump_schedules WHERE sensor_id=$1`,
+      `SELECT label, start_time, duration_seconds, enabled FROM pump_schedules WHERE sensor_id=$1`,
       [sensorId]
     );
 
