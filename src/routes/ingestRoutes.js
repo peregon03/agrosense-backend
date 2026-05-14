@@ -12,12 +12,22 @@ const ingestSchema = z.object({
   air_humidity: z.number().optional().nullable(),
   co2:          z.number().optional().nullable(),
   methane:      z.number().optional().nullable(),
+  // Nodo 03 — sensor de suelo
+  soil_temp:    z.number().optional().nullable(),
+  soil_hum:     z.number().optional().nullable(),
+  ec:           z.number().int().optional().nullable(),
+  ph:           z.number().optional().nullable(),
+  nitrogen:     z.number().int().optional().nullable(),
+  phosphorus:   z.number().int().optional().nullable(),
+  potassium:    z.number().int().optional().nullable(),
 });
 
 router.post("/", async (req, res) => {
   try {
-    const { device_id, api_key, temperature, air_humidity, co2, methane } =
-      ingestSchema.parse(req.body);
+    const {
+      device_id, api_key, temperature, air_humidity, co2, methane,
+      soil_temp, soil_hum, ec, ph, nitrogen, phosphorus, potassium,
+    } = ingestSchema.parse(req.body);
 
     // Validar sensor — incluye email del usuario para notificaciones
     const sensor = await pool.query(
@@ -44,9 +54,16 @@ router.post("/", async (req, res) => {
 
     // Guardar lectura
     await pool.query(
-      `INSERT INTO sensor_readings (sensor_id, temperature, air_humidity, co2, methane)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [row.id, temperature ?? null, air_humidity ?? null, co2 ?? null, methane ?? null]
+      `INSERT INTO sensor_readings
+         (sensor_id, temperature, air_humidity, co2, methane,
+          soil_temp, soil_hum, ec, ph, nitrogen, phosphorus, potassium)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        row.id,
+        temperature  ?? null, air_humidity ?? null, co2 ?? null, methane ?? null,
+        soil_temp    ?? null, soil_hum     ?? null, ec  ?? null, ph      ?? null,
+        nitrogen     ?? null, phosphorus   ?? null, potassium ?? null,
+      ]
     );
 
     // ── Verificar umbrales y generar alertas (fail-safe) ──────────────────────

@@ -144,10 +144,17 @@ router.post("/deleted/:backupId/restore", requireAuth, async (req, res) => {
     // Re-insertar lecturas
     for (const r of readings) {
       await client.query(
-        `INSERT INTO sensor_readings (sensor_id, temperature, air_humidity, co2, methane, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [newSensorId, r.temperature ?? null, r.air_humidity ?? null,
-         r.co2 ?? null, r.methane ?? null, r.created_at]
+        `INSERT INTO sensor_readings
+           (sensor_id, temperature, air_humidity, co2, methane,
+            soil_temp, soil_hum, ec, ph, nitrogen, phosphorus, potassium, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          newSensorId,
+          r.temperature ?? null, r.air_humidity ?? null, r.co2 ?? null, r.methane ?? null,
+          r.soil_temp ?? null, r.soil_hum ?? null, r.ec ?? null, r.ph ?? null,
+          r.nitrogen ?? null, r.phosphorus ?? null, r.potassium ?? null,
+          r.created_at,
+        ]
       );
     }
 
@@ -212,7 +219,9 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     // Obtener últimas 200 lecturas
     const readingsResult = await client.query(
-      `SELECT temperature, air_humidity, co2, methane, created_at
+      `SELECT temperature, air_humidity, co2, methane,
+              soil_temp, soil_hum, ec, ph, nitrogen, phosphorus, potassium,
+              created_at
        FROM sensor_readings
        WHERE sensor_id=$1
        ORDER BY created_at DESC
@@ -319,7 +328,9 @@ router.get("/:id/readings", requireAuth, async (req, res) => {
     }
 
     const readings = await pool.query(
-      `SELECT id, sensor_id, temperature, air_humidity, co2, methane, created_at
+      `SELECT id, sensor_id, temperature, air_humidity, co2, methane,
+              soil_temp, soil_hum, ec, ph, nitrogen, phosphorus, potassium,
+              created_at
        FROM sensor_readings
        WHERE sensor_id = $1
          AND created_at >= NOW() - INTERVAL '${interval}'
