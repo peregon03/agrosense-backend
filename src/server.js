@@ -12,6 +12,7 @@ import sensorRoutes from "./routes/sensorRoutes.js";
 import ingestRoutes from "./routes/ingestRoutes.js";
 import alertRoutes from "./routes/alertRoutes.js";
 import pumpRoutes from "./routes/pumpRoutes.js";
+import composRoutes from "./routes/compostaje.js";
 
 import { errorHandler } from "./middleware/error.middleware.js";
 import { testDb } from "./db.js";
@@ -42,6 +43,7 @@ app.use("/api/sensors", sensorRoutes);
 app.use("/api/sensors", pumpRoutes);
 app.use("/api/ingest", ingestRoutes);
 app.use("/api/alerts", alertRoutes);
+app.use("/api/compostaje", composRoutes);
 
 app.use(errorHandler);
 
