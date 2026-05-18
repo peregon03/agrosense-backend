@@ -153,6 +153,9 @@ export async function verifyEmail(req, res) {
 }
 
 // ── Recuperar contraseña ─────────────────────────────────────────────────────
+// OWASP A01:2021 – Broken Access Control / Information Disclosure
+// Se retorna SIEMPRE la misma respuesta genérica, independientemente de si
+// el correo existe o no, para prevenir la enumeración de usuarios registrados.
 
 export async function forgotPassword(req, res) {
   const { email } = req.body;
@@ -163,8 +166,9 @@ export async function forgotPassword(req, res) {
   const normalizedEmail = email.toLowerCase().trim();
   const result = await pool.query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
 
+  // Respuesta genérica independiente de si el correo existe (anti user-enumeration)
   if (result.rows.length === 0) {
-    return res.status(404).json({ message: "No existe una cuenta con ese correo" });
+    return res.json({ email: normalizedEmail });
   }
 
   const userId = result.rows[0].id;
